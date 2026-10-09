@@ -1,6 +1,3 @@
 # Google AdSense ads.txt specification for FluffyHearts
-# INSTRUCTIONS: Once your site is reviewed and approved by Google AdSense,
-# Google will supply you with your verified publisher ID in the form pub-XXXXXXXXXXXXXXXX.
-# Replace the placeholder pub-0000000000000000 below and uncomment the line:
-#
-# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+google.com, pub-1913338294032596, DIRECT, f08c47fec0942fa0
+

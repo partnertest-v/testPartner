@@ -14,7 +14,7 @@ export const getAdSenseConfig = () => {
   const nextSlotHome = (import.meta as any).env?.NEXT_PUBLIC_ADSENSE_SLOT_HOME;
   const nextSlotContent = (import.meta as any).env?.NEXT_PUBLIC_ADSENSE_SLOT_CONTENT;
 
-  const clientId = viteClientId || nextClientId || 'ca-pub-XXXXXXXXXXXXXXXX';
+  const clientId = viteClientId || nextClientId || 'ca-pub-1913338294032596';
   const slotHome = viteSlotHome || nextSlotHome || '1234567890';
   const slotContent = viteSlotContent || nextSlotContent || '9876543210';
 

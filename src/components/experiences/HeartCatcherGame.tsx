@@ -29,23 +29,31 @@ export const HeartCatcherGame: React.FC = () => {
   useEffect(() => {
     if (!isPlaying) return;
 
-    if (timeLeft <= 0) {
-      setIsPlaying(false);
-      setItems([]);
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsPlaying(false);
+          setItems([]);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPlaying]);
+
+  // Update high score on game finish
+  useEffect(() => {
+    if (!isPlaying && timeLeft === 0) {
       if (score > highScore) {
         setHighScore(score);
         try {
           localStorage.setItem('fluffy_heart_highscore', String(score));
         } catch {}
       }
-      return;
     }
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
   }, [isPlaying, timeLeft, score, highScore]);
 
   // Spawn and movement loop

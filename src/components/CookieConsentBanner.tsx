@@ -23,14 +23,11 @@ export const CookieConsentBanner: React.FC<CookieConsentBannerProps> = ({
         // Small delay so user sees page smoothly without layout shock
         const timer = setTimeout(() => setVisible(true), 800);
         return () => clearTimeout(timer);
-      } else {
-        const parsed: CookiePreferences = JSON.parse(stored);
-        onConsentChange(parsed);
       }
     } catch {
       setVisible(true);
     }
-  }, [onConsentChange]);
+  }, []);
 
   const savePreferences = (essential: boolean, analytics: boolean, advertising: boolean) => {
     const prefs: CookiePreferences = {

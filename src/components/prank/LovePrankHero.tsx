@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { TeddyAsking } from '../illustrations/TeddyAsking';
 import { TeddyCouple } from '../illustrations/TeddyCouple';
@@ -11,14 +12,18 @@ interface LovePrankHeroProps {
 export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) => {
   const [hasSaidYes, setHasSaidYes] = useState<boolean>(false);
   const [noAttempts, setNoAttempts] = useState<number>(0);
-  const [noBtnPos, setNoBtnPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isEscaped, setIsEscaped] = useState<boolean>(false);
+  const [noBtnCoords, setNoBtnCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [envelopeOpen, setEnvelopeOpen] = useState<boolean>(false);
   const [hugCount, setHugCount] = useState<number>(0);
   const [hugMessage, setHugMessage] = useState<string>('');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const yesButtonRef = useRef<HTMLButtonElement>(null);
   const noButtonRef = useRef<HTMLButtonElement>(null);
+  const whatsappButtonRef = useRef<HTMLButtonElement>(null);
 
   // Sound synthesizer using Web Audio API (gentle chime/giggle)
   const playChime = (type: 'dodge' | 'yes' | 'hug') => {
@@ -64,36 +69,123 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
     }
   };
 
-  // Runaway logic for "No" button
+  // Safe boundaries calculation helper
+  const calculateSafeBounds = (btnWidth: number, btnHeight: number) => {
+    const vpWidth = window.innerWidth;
+    const vpHeight = window.innerHeight;
+
+    const padX = 16;
+    const padTop = 76; // keep below header
+    const padBottom = 24;
+
+    const minX = padX;
+    const maxX = Math.max(minX, vpWidth - btnWidth - padX);
+    const minY = padTop;
+    const maxY = Math.max(minY, vpHeight - btnHeight - padBottom);
+
+    return { minX, maxX, minY, maxY, vpWidth, vpHeight };
+  };
+
+  // Keep button safely inside viewport on window resize or device orientation change
+  useEffect(() => {
+    if (!isEscaped) return;
+
+    const handleResize = () => {
+      const btn = noButtonRef.current;
+      const btnWidth = btn?.offsetWidth || 110;
+      const btnHeight = btn?.offsetHeight || 50;
+
+      const { minX, maxX, minY, maxY } = calculateSafeBounds(btnWidth, btnHeight);
+
+      setNoBtnCoords((prev) => ({
+        x: Math.max(minX, Math.min(maxX, prev.x)),
+        y: Math.max(minY, Math.min(maxY, prev.y)),
+      }));
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [isEscaped]);
+
+  // Robust escape logic: Button ALWAYS remains visible in viewport, escapes to new random spot, never overlaps YES/WhatsApp
   const escapeNoButton = () => {
     playChime('dodge');
     setNoAttempts((prev) => prev + 1);
 
-    if (!containerRef.current || !noButtonRef.current) return;
+    const btn = noButtonRef.current;
+    const btnWidth = btn?.offsetWidth || 110;
+    const btnHeight = btn?.offsetHeight || 50;
 
-    const container = containerRef.current.getBoundingClientRect();
-    const btn = noButtonRef.current.getBoundingClientRect();
+    const { minX, maxX, minY, maxY, vpWidth, vpHeight } = calculateSafeBounds(btnWidth, btnHeight);
 
-    // Available boundaries with safe margins inside the card
-    const margin = 20;
-    const maxX = Math.max(20, container.width - btn.width - margin);
-    const maxY = Math.max(20, container.height - btn.height - margin);
+    // Collect obstacle bounding boxes to strictly avoid overlapping
+    const obstacles: DOMRect[] = [];
+    if (yesButtonRef.current) {
+      obstacles.push(yesButtonRef.current.getBoundingClientRect());
+    }
+    if (whatsappButtonRef.current) {
+      obstacles.push(whatsappButtonRef.current.getBoundingClientRect());
+    }
+    if (headingRef.current) {
+      obstacles.push(headingRef.current.getBoundingClientRect());
+    }
 
-    // Pick random location that is noticeably far from current position
-    let newX = Math.random() * maxX;
-    let newY = Math.random() * maxY;
+    let bestX = minX;
+    let bestY = minY;
+    let found = false;
 
-    // Adjust relative to center
-    newX = newX - container.width / 2 + btn.width / 2;
-    newY = newY - container.height / 2 + btn.height / 2;
+    // Try finding a clean, non-overlapping location
+    for (let i = 0; i < 35; i++) {
+      const candX = minX + Math.random() * (maxX - minX);
+      const candY = minY + Math.random() * (maxY - minY);
 
-    // Clamp coordinates safely
-    const maxBoundX = container.width / 2 - btn.width / 2 - 16;
-    const maxBoundY = container.height / 2 - btn.height / 2 - 16;
-    newX = Math.max(-maxBoundX, Math.min(maxBoundX, newX));
-    newY = Math.max(-maxBoundY, Math.min(maxBoundY, newY));
+      // Ensure noticeable jump distance from current position
+      if (isEscaped) {
+        const dist = Math.hypot(candX - noBtnCoords.x, candY - noBtnCoords.y);
+        if (dist < 100) continue;
+      }
 
-    setNoBtnPos({ x: newX, y: newY });
+      // Check collision with obstacles (with 24px safety buffer)
+      const buffer = 24;
+      const collides = obstacles.some((obs) => {
+        return !(
+          candX + btnWidth + buffer < obs.left ||
+          candX > obs.right + buffer ||
+          candY + btnHeight + buffer < obs.top ||
+          candY > obs.bottom + buffer
+        );
+      });
+
+      if (!collides) {
+        bestX = candX;
+        bestY = candY;
+        found = true;
+        break;
+      }
+    }
+
+    // Fallback if tight screen: Pick quadrant farthest from YES button
+    if (!found) {
+      const yesRect = yesButtonRef.current?.getBoundingClientRect();
+      if (yesRect) {
+        bestX = yesRect.left > vpWidth / 2 ? minX + 24 : maxX - 24;
+        bestY = yesRect.top > vpHeight / 2 ? minY + 24 : maxY - 24;
+      } else {
+        bestX = minX + Math.random() * (maxX - minX);
+        bestY = minY + Math.random() * (maxY - minY);
+      }
+    }
+
+    // Strictly clamp within visible viewport
+    bestX = Math.max(minX, Math.min(maxX, bestX));
+    bestY = Math.max(minY, Math.min(maxY, bestY));
+
+    setNoBtnCoords({ x: bestX, y: bestY });
+    setIsEscaped(true);
   };
 
   // Trigger celebration on Yes!
@@ -151,10 +243,19 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
   const handleRestart = () => {
     setHasSaidYes(false);
     setNoAttempts(0);
-    setNoBtnPos({ x: 0, y: 0 });
+    setIsEscaped(false);
+    setNoBtnCoords({ x: 0, y: 0 });
     setEnvelopeOpen(false);
     setHugCount(0);
     setHugMessage('');
+  };
+
+  // WhatsApp share action
+  const handleWhatsAppShare = () => {
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : 'https://fluffyhearts.app';
+    const message = `😂 Bhai, ek mazedaar test hai! Dekhte hain tum NO button pakad paate ho ya nahi! 💗🧸\n\nTry karo aur apna result dekho:\n${currentUrl}`;
+    const shareUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
   };
 
   // Playful attempt reaction messages
@@ -176,7 +277,7 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
       <div className="flex justify-end mb-4">
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 bg-white/80 rounded-full border border-rose-100 shadow-2xs transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 bg-white/80 rounded-full border border-rose-100 shadow-2xs transition-colors cursor-pointer"
           title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
         >
           {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
@@ -188,9 +289,9 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
         /* ================= STATE 1: ASKING STAGE ================= */
         <div
           ref={containerRef}
-          className="relative bg-white/95 rounded-3xl p-6 sm:p-10 md:p-12 shadow-xl shadow-rose-100/60 border border-rose-100 flex flex-col items-center text-center overflow-hidden min-h-[500px]"
+          className="relative bg-white/95 rounded-3xl p-6 sm:p-10 md:p-12 shadow-xl shadow-rose-100/60 border border-rose-100 flex flex-col items-center text-center min-h-[500px]"
         >
-          {/* Decorative subtle hearts */}
+          {/* Decorative subtle ambient stamps */}
           <div className="absolute top-4 left-6 text-rose-200 text-xl select-none" aria-hidden="true">
             💌
           </div>
@@ -200,7 +301,10 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
 
           {/* Heading */}
           <div className="mb-2">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 tracking-tight flex items-center justify-center gap-2">
+            <h1
+              ref={headingRef}
+              className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 tracking-tight flex items-center justify-center gap-2"
+            >
               <span>Hey You!</span>
               <span className="text-rose-500 animate-gentle-bounce">💌</span>
             </h1>
@@ -225,12 +329,13 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
           </div>
 
           {/* Buttons Area */}
-          <div className="relative w-full max-w-md h-24 flex items-center justify-center gap-6 mt-4">
+          <div className="relative w-full max-w-md min-h-[72px] flex items-center justify-center gap-6 mt-4">
             {/* Yes Button (Grows slightly with attempts to make it irresistible!) */}
             <button
+              ref={yesButtonRef}
               onClick={handleYesClick}
               style={{
-                transform: `scale(${Math.min(1.25, 1 + noAttempts * 0.04)})`,
+                transform: `scale(${Math.min(1.22, 1 + noAttempts * 0.035)})`,
               }}
               className="z-10 px-8 py-3.5 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold text-lg rounded-2xl shadow-lg shadow-rose-400/30 hover:shadow-rose-400/50 transition-all duration-200 active:scale-95 flex items-center gap-2 cursor-pointer"
             >
@@ -238,36 +343,67 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
               <span>💖</span>
             </button>
 
-            {/* Escaping No Button */}
-            <button
-              ref={noButtonRef}
-              onMouseEnter={escapeNoButton}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                escapeNoButton();
-              }}
-              onClick={escapeNoButton}
-              style={{
-                transform: `translate(${noBtnPos.x}px, ${noBtnPos.y}px)`,
-                transition: 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
-              }}
-              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-base rounded-2xl shadow-sm border border-slate-200 select-none cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95"
-            >
-              <span>No</span>
-              <span>🙈</span>
-            </button>
+            {/* In-flow NO button (before first escape) */}
+            {!isEscaped && (
+              <button
+                ref={noButtonRef}
+                onMouseEnter={escapeNoButton}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  escapeNoButton();
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  escapeNoButton();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  escapeNoButton();
+                }}
+                className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-base rounded-2xl shadow-sm border border-slate-200 select-none cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 touch-none"
+              >
+                <span>No</span>
+                <span>🙈</span>
+              </button>
+            )}
+
+            {/* Reserved spacer when escaped to prevent layout shifts */}
+            {isEscaped && (
+              <div
+                className="w-[108px] h-[48px] opacity-0 pointer-events-none select-none shrink-0"
+                aria-hidden="true"
+              />
+            )}
           </div>
 
           {/* Footer note inside card */}
-          <div className="mt-8 text-xs text-slate-500 flex items-center gap-2">
+          <div className="mt-6 text-xs text-slate-500 flex items-center gap-2">
             <span>Tip: Try catching the "No" button if you dare</span>
             <span aria-hidden="true">·</span>
             <span>Attempts: {noAttempts}</span>
           </div>
+
+          {/* ================= WHATSAPP SHARE BUTTON ================= */}
+          <div className="mt-8 pt-6 border-t border-rose-100 w-full flex flex-col items-center">
+            <button
+              ref={whatsappButtonRef}
+              onClick={handleWhatsAppShare}
+              className="px-7 py-3 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold text-sm sm:text-base rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-2.5 cursor-pointer select-none"
+              title="Share prank with friends on WhatsApp"
+            >
+              <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+              </svg>
+              <span>💚 Dosto ko bhejo</span>
+            </button>
+            <p className="text-xs text-slate-500 mt-2">
+              Send this challenge to your friends or crush on WhatsApp!
+            </p>
+          </div>
         </div>
       ) : (
         /* ================= STATE 2: CELEBRATION & SURPRISE LETTER ================= */
-        <div className="bg-white/95 rounded-3xl p-6 sm:p-10 md:p-12 shadow-xl shadow-rose-100/60 border border-rose-100 flex flex-col items-center text-center overflow-hidden animate-fadeIn">
+        <div className="bg-white/95 rounded-3xl p-6 sm:p-10 md:p-12 shadow-xl shadow-rose-100/60 border border-rose-100 flex flex-col items-center text-center animate-fadeIn">
           {/* Header celebration */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-rose-50 text-rose-600 rounded-full text-sm font-semibold mb-3 border border-rose-100">
             <Sparkles className="w-4 h-4 text-rose-500" />
@@ -366,6 +502,20 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
             )}
           </div>
 
+          {/* WhatsApp Share in Celebration */}
+          <div className="my-4">
+            <button
+              onClick={handleWhatsAppShare}
+              className="px-7 py-3 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold text-sm sm:text-base rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-2.5 cursor-pointer select-none"
+              title="Share prank with friends on WhatsApp"
+            >
+              <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+              </svg>
+              <span>💚 Dosto ko bhejo</span>
+            </button>
+          </div>
+
           {/* Action buttons: Restart & Explore More */}
           <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
             <button
@@ -387,6 +537,40 @@ export const LovePrankHero: React.FC<LovePrankHeroProps> = ({ onExploreMore }) =
             )}
           </div>
         </div>
+      )}
+
+      {/* ================= ESCAPED NO BUTTON (RENDERED IN PORTAL TO BODY) ================= */}
+      {/* Guarantees the button is ALWAYS visible in the viewport, never clipped, never hidden under any card */}
+      {isEscaped && !hasSaidYes && typeof document !== 'undefined' && createPortal(
+        <button
+          ref={noButtonRef}
+          onMouseEnter={escapeNoButton}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            escapeNoButton();
+          }}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            escapeNoButton();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            escapeNoButton();
+          }}
+          style={{
+            position: 'fixed',
+            left: `${noBtnCoords.x}px`,
+            top: `${noBtnCoords.y}px`,
+            zIndex: 9999,
+            transition: 'left 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), top 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
+          }}
+          className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-base rounded-2xl shadow-lg border border-slate-300 select-none cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 touch-none"
+          aria-label="No button (escapes when approached)"
+        >
+          <span>No</span>
+          <span>🙈</span>
+        </button>,
+        document.body
       )}
     </div>
   );

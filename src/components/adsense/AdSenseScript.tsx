@@ -15,8 +15,8 @@ export const AdSenseScript: React.FC<AdSenseScriptProps> = ({ advertisingConsent
     }
 
     const scriptId = 'google-adsense-script';
-    if (document.getElementById(scriptId)) {
-      return; // Already loaded once
+    if (document.getElementById(scriptId) || document.querySelector('script[src*="adsbygoogle.js"]')) {
+      return; // Already loaded once in HTML or previous run
     }
 
     const script = document.createElement('script');

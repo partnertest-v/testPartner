@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { PageId, CookiePreferences } from './types';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -29,12 +29,24 @@ import { Heart, Sparkles, HelpCircle, ShieldCheck, ArrowRight, Smile } from 'luc
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageId>('home');
-  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>({
-    essential: true,
-    analytics: true,
-    advertising: true,
-    hasConsented: false,
+  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('fluffy_cookie_preferences') : null;
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {}
+    return {
+      essential: true,
+      analytics: true,
+      advertising: true,
+      hasConsented: false,
+    };
   });
+
+  const handleConsentChange = useCallback((prefs: CookiePreferences) => {
+    setCookiePrefs(prefs);
+  }, []);
 
   const handleNavigate = (page: PageId) => {
     setCurrentPage(page);
@@ -358,7 +370,7 @@ export default function App() {
 
       {/* Cookie & Privacy Consent Banner */}
       <CookieConsentBanner
-        onConsentChange={(prefs) => setCookiePrefs(prefs)}
+        onConsentChange={handleConsentChange}
         onNavigateToPrivacy={() => handleNavigate('privacy')}
       />
     </div>
