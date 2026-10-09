@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+
+@keyframes gentleBounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 4s ease-in-out infinite;
+}
+
+.animate-gentle-bounce {
+  animation: gentleBounce 2.5s ease-in-out infinite;
+}
+

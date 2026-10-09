@@ -1,0 +1,6 @@
+{
+  "name": "FluffyHearts - Cute Love Prank & Relationship Quizzes",
+  "description": "An adorable interactive romantic experience featuring the viral escaping No button prank, celebratory surprise letter, love compatibility test, and cute games.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
